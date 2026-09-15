@@ -1,0 +1,148 @@
+# Propuesta de caso acotado
+## Seguro de Salud Público: Resultado Financiero por Asegurado
+
+**FONASALUD** es un fondo público de aseguramiento en salud que desea implementar una base de datos que le permita analizar el resultado financiero que genera cada uno de sus asegurados a partir de las coberturas que mantiene y las operaciones (atenciones) realizadas durante un período determinado.
+
+El objetivo es que el área financiera pueda identificar qué asegurados son superavitarios o deficitarios, qué coberturas son más costosas o más sostenibles, y cómo evolucionan los ingresos, costos y resultado financiero de los asegurados.
+
+Para este proyecto se considerará únicamente información relacionada con:
+
+Asegurados. Segmentos. Coberturas de salud. Afiliación a coberturas. Operaciones realizadas. Canales. Ingresos generados. Costos asociados. Resultado financiero por período.
+
+Se excluirán del alcance aspectos propios de la operación de salud detallada, como el manejo de historias clínicas, diagnósticos (CIE-10), topes de cobertura, credenciales físicas o virtuales, el detalle de solicitudes de reembolso, entidades empleadoras y procesos de afiliación familiar.
+
+## 1. Asegurados
+
+El fondo registra asegurados, tanto titulares (activos y pensionistas) como derechohabientes.
+
+Para cada asegurado se requiere almacenar:
+
+Código de asegurado. Tipo de asegurado. Documento de identidad. Nombres. Fecha de alta. Segmento al que pertenece. Estado.
+
+Un asegurado pertenece a un segmento.
+
+El fondo desea conservar la información necesaria para analizar el resultado financiero de sus asegurados durante el período de estudio.
+
+## 2. Segmentos de asegurados
+
+El fondo clasifica a sus asegurados en diferentes segmentos.
+
+Por ejemplo:
+
+Titular activo. Titular pensionista. Derechohabiente cónyuge. Derechohabiente hijo. Cesante con continuación voluntaria.
+
+Cada segmento tiene:
+
+Código. Nombre. Descripción.
+
+Para simplificar el alcance del proyecto, se considerará que un asegurado pertenece a un único segmento durante el período analizado.
+
+## 3. Coberturas de salud
+
+El fondo ofrece diferentes coberturas.
+
+Por ejemplo:
+
+Cobertura Básica de Salud. Cobertura Complementaria Odontológica. Cobertura Complementaria Oncológica. Cobertura de Alto Costo. Cobertura para Pensionistas.
+
+Cada cobertura pertenece a una categoría.
+
+Se requiere registrar:
+
+Código de la cobertura. Nombre. Categoría. Tipo de cobertura. Moneda. Estado.
+
+## 4. Afiliación a coberturas
+
+Un asegurado puede afiliarse a una o varias coberturas.
+
+Por ejemplo: el asegurado Carlos Ramos se afilia a la Cobertura Básica de Salud y, al pasar a la condición de pensionista, se afilia adicionalmente a la Cobertura para Pensionistas.
+
+Para cada afiliación se desea conocer:
+
+Asegurado. Cobertura. Fecha de afiliación. Fecha de baja, si corresponde. Estado de la afiliación.
+
+Un asegurado puede afiliarse a la misma cobertura más de una vez en diferentes momentos.
+
+## 5. Operaciones
+
+Los asegurados realizan operaciones relacionadas con las coberturas afiliadas.
+
+Para este proyecto se considerarán operaciones como:
+
+Atenciones médicas. Solicitudes de reembolso. Entregas de medicamentos. Exámenes auxiliares. Otras prestaciones.
+
+Cada operación debe registrar como mínimo:
+
+Asegurado. Cobertura. Tipo de operación. Fecha. Canal. Importe. Moneda. Estado.
+
+Las operaciones serán utilizadas posteriormente para determinar los ingresos y costos asociados a los asegurados.
+
+## 6. Canales
+
+Las operaciones pueden realizarse mediante diferentes canales:
+
+IPRESS de la red propia. IPRESS de referencia. Telemedicina. Farmacia convenio. Atención domiciliaria.
+
+Cada canal tendrá:
+
+Código. Nombre. Descripción.
+
+El fondo desea analizar posteriormente qué canales concentran mayor volumen de operaciones y mejor resultado financiero.
+
+## 7. Ingresos
+
+Las operaciones y coberturas pueden generar ingresos para el fondo.
+
+Los principales conceptos considerados para este proyecto son:
+
+Aportes (planilla, entidad, pensionista). Transferencias del Tesoro Público. Otros ingresos.
+
+Para cada ingreso se requiere conocer:
+
+Asegurado relacionado. Cobertura relacionada, cuando corresponda. Operación relacionada, cuando corresponda. Tipo de ingreso. Fecha. Importe.
+
+Un ingreso puede estar asociado directamente a una operación o a una cobertura.
+
+## 8. Costos
+
+El fondo también incurre en costos asociados a la atención de sus asegurados.
+
+Para este proyecto se considerarán:
+
+Costos de prestación. Costos de procesamiento. Costos de canal. Otros costos.
+
+Cada costo deberá registrar:
+
+Asegurado al que se asigna. Cobertura relacionada, cuando corresponda. Tipo de costo. Fecha. Importe.
+
+No todos los costos necesariamente estarán asociados a una operación específica.
+
+## 9. Resultado financiero
+
+El área financiera desea obtener el resultado financiero generado por cada asegurado, como indicador de sostenibilidad del fondo (no de utilidad comercial).
+
+Para efectos del proyecto se utilizará la siguiente definición:
+
+Resultado financiero = Ingresos − Costos
+
+El resultado financiero debe poder analizarse por:
+
+Asegurado. Cobertura. Segmento. Período.
+
+El fondo considera como período de análisis un mes.
+
+Por lo tanto, se debe poder determinar, por ejemplo:
+
+| Asegurado | Mes | Ingresos | Costos | Resultado financiero |
+|---|---|---|---|---|
+| Asegurado A | Enero | S/ 450 | S/ 180 | S/ 270 |
+| Asegurado A | Febrero | S/ 520 | S/ 610 | -S/ 90 |
+| Asegurado B | Enero | S/ 150 | S/ 230 | -S/ 80 |
+
+Estos datos son únicamente ilustrativos y no forman parte de la solución.
+
+## 10. Requerimientos de análisis
+
+Una vez implementada la base de datos, el fondo deberá poder responder preguntas como:
+
+¿Cuál es el ingreso total generado por cada asegurado? ¿Cuál es el costo total asociado a cada asegurado? ¿Cuál es el resultado financiero de cada asegurado? ¿Cuáles son los 10 asegurados de mayor costo? ¿Qué asegurados presentan resultado financiero negativo? ¿Qué coberturas generan mayores ingresos? ¿Qué coberturas generan mayor resultado financiero? ¿Qué segmento de asegurados es más sostenible? ¿Qué canal concentra mayor cantidad de operaciones? ¿Qué canal genera mejor resultado financiero? ¿Cómo evoluciona mensualmente el resultado financiero de un asegurado? ¿Qué asegurados generan altos ingresos pero también altos costos?
