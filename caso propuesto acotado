@@ -1,148 +1,528 @@
-# Propuesta de caso acotado
-## Seguro de Salud Público: Resultado Financiero por Asegurado
+FONASALUD - RESULTADO FINANCIERO POR ASEGURADO
+==============================================
+
+Base de datos analítica en Microsoft SQL Server para medir el resultado
+financiero (ingresos - costos) que genera cada asegurado de un seguro de
+salud público, por cobertura, segmento, entidad empleadora, canal y mes.
+
+Caso académico. Todos los datos de ejemplo son ficticios.
+
+
+ARCHIVOS
+--------
+
+Scripts SQL:
+  - seguro_salud_publico_v2.sql
+      Crea la base: tablas, restricciones, índices y vistas.
+  - poblar_seguro_salud_publico.sql
+      Carga datos ficticios consistentes y ejecuta reportes de validación.
+  - migracion_v1_a_v2.sql
+      Convierte una base v1 que ya tiene datos al modelo v2.
+  - fonasalud_v2_import.sql
+      Solo tablas y relaciones, para importar en herramientas de diagrama.
+
+Diagramas:
+  - modelo_conceptual_v2.png           Modelo entidad-relación (notación de Chen)
+  - modelo_fisico_v2.png               Modelo físico (estilo SQL Server)
+  - modelo_fisico_v2_dbdesigner.png    Modelo físico (estilo erd.dbdesigner.net)
+
+
+CÓMO EJECUTAR
+-------------
+
+Requisito: SQL Server 2016 SP1 o superior.
+
+1. Crear la base: ejecutar seguro_salud_publico_v2.sql.
+   Crea la base seguro_salud_publico con 13 tablas y 3 vistas.
+
+2. Cargar datos de ejemplo: ejecutar poblar_seguro_salud_publico.sql.
+   - Borra los datos existentes y genera unos 2 000 asegurados,
+     60 000 atenciones, 65 000 ingresos y 70 000 costos entre enero de
+     2025 y agosto de 2026.
+   - Es determinista: con la misma semilla (@Seed) salen los mismos datos.
+   - Al final ejecuta validaciones de consistencia y reportes de ejemplo.
+
+3. Solo si ya existe una base v1 con datos: en lugar de los pasos 1 y 2,
+   ejecutar migracion_v1_a_v2.sql. Sacar antes un respaldo y ejecutar
+   primero solo el PASO 0 (diagnóstico).
+
+Parámetros principales del script de datos:
+  @Seed               20260925      Semilla de los valores aleatorios
+  @NumAsegurados      2000          Cantidad de asegurados
+  @NumEntidades       40            Cantidad de entidades empleadoras
+  @TargetOperaciones  60000         Atenciones aproximadas a generar
+  @Desde              2025-01-01    Inicio de los movimientos
+  @DatosHasta         2026-08-31    Fin de los movimientos
+  @CalDesde           2025-01-01    Inicio del calendario (periodos)
+  @CalHasta           2026-12-31    Fin del calendario (periodos)
+
+
+TABLAS
+------
+
+  segmentos
+      Tipos de asegurado: titular activo, titular pensionista,
+      derechohabiente, cesante.
+  entidades_empleadoras
+      Entidades del Estado que emplean a los titulares y pagan el aporte
+      de entidad.
+  asegurados
+      Personas cubiertas, con su segmento y su entidad ACTUALES.
+  asegurados_condicion_hist
+      Tramos de fechas con el segmento y la entidad que tuvo cada asegurado.
+  categorias_cobertura
+      Básica, complementaria, especial.
+  coberturas
+      Planes de salud y su aporte referencial.
+  afiliaciones
+      Asegurado + cobertura + vigencia. Es el eje del modelo.
+  canales
+      Vías de atención: red propia, referencia, telemedicina, farmacia,
+      domicilio.
+  periodos
+      Calendario diario (año, mes, día, trimestre, semestre).
+  cargas
+      Bitácora de cada carga de datos desde los sistemas fuente.
+  operaciones
+      Una fila por atención.
+  ingresos
+      Aportes, transferencias del Tesoro y recuperaciones por subrogación.
+  costos
+      Prestaciones, referencias, procesamiento de reembolsos y gastos
+      administrativos.
+
+
+VISTAS
+------
+
+  vw_resultado_financiero
+      Ingresos, costos y resultado por asegurado y día, con el segmento y
+      la entidad vigentes en esa fecha.
+  vw_resultado_financiero_mensual
+      Lo mismo, consolidado por mes.
+  vw_resultado_por_segmento_mensual
+      Asegurados, ingresos, costos y resultado por segmento y mes.
 
-**FONASALUD** es un fondo público de aseguramiento en salud que desea implementar una base de datos que le permita analizar el resultado financiero que genera cada uno de sus asegurados a partir de las coberturas que mantiene y las operaciones (atenciones) realizadas durante un período determinado.
 
-El objetivo es que el área financiera pueda identificar qué asegurados son superavitarios o deficitarios, qué coberturas son más costosas o más sostenibles, y cómo evolucionan los ingresos, costos y resultado financiero de los asegurados.
+==========================================================================
+CASO PROPUESTO
+SEGURO DE SALUD PÚBLICO: RESULTADO FINANCIERO POR ASEGURADO
+==========================================================================
 
-Para este proyecto se considerará únicamente información relacionada con:
+FONASALUD es un fondo público de aseguramiento en salud que desea
+implementar una base de datos analítica que le permita conocer el resultado
+financiero que genera cada uno de sus asegurados, a partir de las coberturas
+a las que está afiliado y de las atenciones que recibe durante un período
+determinado.
 
-Asegurados. Segmentos. Coberturas de salud. Afiliación a coberturas. Operaciones realizadas. Canales. Ingresos generados. Costos asociados. Resultado financiero por período.
+El objetivo es que el área financiera pueda identificar qué asegurados son
+superavitarios o deficitarios, qué coberturas y segmentos son más
+sostenibles, qué entidades empleadoras aportan más y cómo evolucionan mes a
+mes los ingresos, los costos y el resultado financiero.
 
-Se excluirán del alcance aspectos propios de la operación de salud detallada, como el manejo de historias clínicas, diagnósticos (CIE-10), topes de cobertura, credenciales físicas o virtuales, el detalle de solicitudes de reembolso, entidades empleadoras y procesos de afiliación familiar.
+La base de datos no registra operaciones en línea. Recibe la información ya
+procesada de los sistemas fuente del fondo (atenciones, recaudación y
+liquidaciones) mediante cargas periódicas. Cada atención, pago o
+liquidación se recibe como una fila.
 
-## 1. Asegurados
+Incluido en el alcance:
+  asegurados; segmentos e historial de condición del asegurado; entidades
+  empleadoras; coberturas de salud y sus categorías; afiliación a
+  coberturas; operaciones (atenciones); canales; ingresos; costos;
+  períodos; control de cargas; resultado financiero por período.
 
-El fondo registra asegurados, tanto titulares (activos y pensionistas) como derechohabientes.
+Fuera del alcance:
+  historias clínicas, diagnósticos (CIE-10), topes de cobertura,
+  credenciales físicas o virtuales, el detalle de las solicitudes de
+  reembolso, las planillas de recaudación, el vínculo familiar entre
+  titular y derechohabiente y el detalle de procedimientos de cada atención.
 
-Para cada asegurado se requiere almacenar:
 
-Código de asegurado. Tipo de asegurado. Documento de identidad. Nombres. Fecha de alta. Segmento al que pertenece. Estado.
+1. ASEGURADOS
 
-Un asegurado pertenece a un segmento.
+El fondo registra asegurados titulares (activos y pensionistas),
+derechohabientes y cesantes.
 
-El fondo desea conservar la información necesaria para analizar el resultado financiero de sus asegurados durante el período de estudio.
+Para cada asegurado se almacena: código de asegurado, documento de
+identidad, nombres, fecha de nacimiento, sexo, fecha de alta, estado,
+segmento actual y entidad empleadora actual, si la tiene.
 
-## 2. Segmentos de asegurados
+El tipo de asegurado lo determina su segmento, por lo que no se registra
+por separado. Un asegurado pertenece a un solo segmento a la vez y puede
+tener como máximo una entidad empleadora a la vez.
 
-El fondo clasifica a sus asegurados en diferentes segmentos.
 
-Por ejemplo:
+2. SEGMENTOS DE ASEGURADOS
 
-Titular activo. Titular pensionista. Derechohabiente cónyuge. Derechohabiente hijo. Cesante con continuación voluntaria.
+El fondo clasifica a sus asegurados en: titular activo, titular
+pensionista, derechohabiente y cesante (conserva la cobertura por un
+período de latencia tras el cese).
 
-Cada segmento tiene:
+Cada segmento tiene código y descripción.
 
-Código. Nombre. Descripción.
 
-Para simplificar el alcance del proyecto, se considerará que un asegurado pertenece a un único segmento durante el período analizado.
+3. HISTORIAL DE CONDICIÓN DEL ASEGURADO
 
-## 3. Coberturas de salud
+La condición de un asegurado puede cambiar durante el período de estudio:
+un titular activo puede jubilarse, quedar cesante o cambiar de entidad
+empleadora.
 
-El fondo ofrece diferentes coberturas.
+Para que el resultado financiero de un mes se atribuya al segmento y a la
+entidad que tenía el asegurado EN ESE MES, el fondo conserva el historial
+de su condición. Cada tramo registra: asegurado, segmento, entidad
+empleadora (si corresponde), fecha desde y fecha hasta (vacía si el tramo
+está vigente).
 
-Por ejemplo:
+Un asegurado tiene un solo tramo vigente a la vez. El segmento y la
+entidad registrados en el asegurado corresponden a su tramo vigente.
 
-Cobertura Básica de Salud. Cobertura Complementaria Odontológica. Cobertura Complementaria Oncológica. Cobertura de Alto Costo. Cobertura para Pensionistas.
+Ejemplo: Carlos Ramos fue titular activo de la entidad ENT007 desde marzo
+de 2024 hasta agosto de 2026, y es titular pensionista desde septiembre de
+2026. Sus resultados hasta agosto se reportan en el segmento de activos y
+los de septiembre en adelante en el de pensionistas.
 
-Cada cobertura pertenece a una categoría.
 
-Se requiere registrar:
+4. ENTIDADES EMPLEADORAS
 
-Código de la cobertura. Nombre. Categoría. Tipo de cobertura. Moneda. Estado.
+Las entidades del Estado emplean a los titulares activos y pagan el aporte
+de entidad.
 
-## 4. Afiliación a coberturas
+Para cada entidad se registra: código, nombre, RUC, sector, fecha de
+registro y estado.
 
-Un asegurado puede afiliarse a una o varias coberturas.
 
-Por ejemplo: el asegurado Carlos Ramos se afilia a la Cobertura Básica de Salud y, al pasar a la condición de pensionista, se afilia adicionalmente a la Cobertura para Pensionistas.
+5. COBERTURAS DE SALUD
 
-Para cada afiliación se desea conocer:
+El fondo ofrece diferentes coberturas. Cada cobertura pertenece a una
+categoría: básica, complementaria o especial.
 
-Asegurado. Cobertura. Fecha de afiliación. Fecha de baja, si corresponde. Estado de la afiliación.
+Por ejemplo: plan de salud básico, salud dental, salud visual, atención
+domiciliaria, oncología, alto costo y trasplantes.
 
-Un asegurado puede afiliarse a la misma cobertura más de una vez en diferentes momentos.
+Se registra: código, nombre, categoría, moneda, aporte referencial, estado
+y fecha de vigencia. El tipo de cobertura lo determina su categoría.
 
-## 5. Operaciones
 
-Los asegurados realizan operaciones relacionadas con las coberturas afiliadas.
+6. AFILIACIÓN A COBERTURAS
 
-Para este proyecto se considerarán operaciones como:
+Un asegurado puede afiliarse a una o varias coberturas. Todo asegurado
+tiene el plan básico desde su fecha de alta y puede tomar coberturas
+adicionales.
 
-Atenciones médicas. Solicitudes de reembolso. Entregas de medicamentos. Exámenes auxiliares. Otras prestaciones.
+Para cada afiliación se registra: asegurado, cobertura, fecha de
+afiliación, fecha de baja (si corresponde) y estado (vigente, suspendida o
+baja).
 
-Cada operación debe registrar como mínimo:
+Un asegurado puede afiliarse a la misma cobertura más de una vez en
+momentos diferentes, pero no puede tener dos afiliaciones abiertas a la
+misma cobertura al mismo tiempo.
 
-Asegurado. Cobertura. Tipo de operación. Fecha. Canal. Importe. Moneda. Estado.
+La afiliación es el eje del modelo: las operaciones, los ingresos y los
+costos se registran sobre una afiliación. Así cada movimiento identifica al
+asegurado y la cobertura, y no se puede registrar un movimiento en una
+cobertura que el asegurado no tiene.
 
-Las operaciones serán utilizadas posteriormente para determinar los ingresos y costos asociados a los asegurados.
 
-## 6. Canales
+7. OPERACIONES
 
-Las operaciones pueden realizarse mediante diferentes canales:
+Los asegurados reciben atenciones con cargo a las coberturas a las que
+están afiliados: atenciones médicas, referencias a otros establecimientos,
+cartas de garantía y solicitudes de reembolso.
 
-IPRESS de la red propia. IPRESS de referencia. Telemedicina. Farmacia convenio. Atención domiciliaria.
+Cada operación registra: código de origen (número de la atención en el
+sistema fuente), afiliación (asegurado y cobertura), tipo de operación,
+fecha, canal, importe bruto (monto facturado o solicitado), estado
+(liquidada, observada o rechazada) y la carga en la que llegó.
 
-Cada canal tendrá:
+La moneda de la operación es la de su cobertura. El importe bruto no se
+suma en el resultado financiero: el monto reconocido se registra como
+costo.
 
-Código. Nombre. Descripción.
 
-El fondo desea analizar posteriormente qué canales concentran mayor volumen de operaciones y mejor resultado financiero.
+8. CANALES
 
-## 7. Ingresos
+Las operaciones se realizan por distintos canales: IPRESS de la red
+propia, IPRESS de referencia, telemedicina, farmacia con convenio y
+atención domiciliaria.
 
-Las operaciones y coberturas pueden generar ingresos para el fondo.
+Cada canal tiene código, nombre y descripción.
 
-Los principales conceptos considerados para este proyecto son:
 
-Aportes (planilla, entidad, pensionista). Transferencias del Tesoro Público. Otros ingresos.
+9. INGRESOS
 
-Para cada ingreso se requiere conocer:
+Los ingresos se generan por la afiliación de los asegurados a sus
+coberturas y, en algunos casos, por recuperaciones asociadas a una
+atención.
 
-Asegurado relacionado. Cobertura relacionada, cuando corresponda. Operación relacionada, cuando corresponda. Tipo de ingreso. Fecha. Importe.
+Tipos de ingreso:
 
-Un ingreso puede estar asociado directamente a una operación o a una cobertura.
+  Aporte de entidad
+    Lo paga la entidad empleadora del titular activo.
+    Se asocia a la afiliación y a la entidad pagadora.
 
-## 8. Costos
+  Aporte del titular
+    Lo paga el pensionista (retención) o el titular que tiene coberturas
+    adicionales.
+    Se asocia a la afiliación.
 
-El fondo también incurre en costos asociados a la atención de sus asegurados.
+  Transferencia del Tesoro
+    La hace el Estado para financiar a los pensionistas.
+    Se asocia a la afiliación.
 
-Para este proyecto se considerarán:
+  Recuperación por subrogación
+    La paga un tercero responsable de la atención (por ejemplo, otro
+    seguro).
+    Se asocia a la afiliación y a la operación.
 
-Costos de prestación. Costos de procesamiento. Costos de canal. Otros costos.
+Cada ingreso registra: código de origen, afiliación, período, tipo de
+ingreso, entidad pagadora (obligatoria en el aporte de entidad), operación
+(solo en la recuperación por subrogación), importe y la carga en la que
+llegó.
 
-Cada costo deberá registrar:
+Los aportes se registran en el mes al que corresponden. Derechohabientes y
+cesantes no aportan: su atención la financia el fondo.
 
-Asegurado al que se asigna. Cobertura relacionada, cuando corresponda. Tipo de costo. Fecha. Importe.
 
-No todos los costos necesariamente estarán asociados a una operación específica.
+10. COSTOS
 
-## 9. Resultado financiero
+Tipos de costo:
 
-El área financiera desea obtener el resultado financiero generado por cada asegurado, como indicador de sostenibilidad del fondo (no de utilidad comercial).
+  Prestación
+    Pago por la atención. Operación obligatoria.
+  Referencia interinstitucional
+    Atención en un establecimiento externo. Operación obligatoria.
+  Procesamiento de reembolso
+    Gestión de una solicitud de reembolso. Operación obligatoria.
+  Administrativo
+    Gasto general repartido entre las afiliaciones. No tiene operación.
 
-Para efectos del proyecto se utilizará la siguiente definición:
+Cada costo registra: código de origen, afiliación a la que se asigna,
+operación que lo originó (cuando corresponda), período (fecha de
+liquidación), tipo de costo, importe y la carga en la que llegó.
 
-Resultado financiero = Ingresos − Costos
+Una operación puede generar más de un costo. No todos los costos están
+asociados a una operación, pero todos se asignan a una afiliación y, por
+tanto, a un asegurado y una cobertura.
 
-El resultado financiero debe poder analizarse por:
 
-Asegurado. Cobertura. Segmento. Período.
+11. PERÍODOS
 
-El fondo considera como período de análisis un mes.
+El fondo mantiene un calendario diario con fecha, año, mes, día, trimestre
+y semestre. Operaciones, ingresos y costos se relacionan con el día en que
+ocurren o se devengan, y el análisis se consolida por mes.
 
-Por lo tanto, se debe poder determinar, por ejemplo:
 
-| Asegurado | Mes | Ingresos | Costos | Resultado financiero |
-|---|---|---|---|---|
-| Asegurado A | Enero | S/ 450 | S/ 180 | S/ 270 |
-| Asegurado A | Febrero | S/ 520 | S/ 610 | -S/ 90 |
-| Asegurado B | Enero | S/ 150 | S/ 230 | -S/ 80 |
+12. CONTROL DE CARGAS
 
-Estos datos son únicamente ilustrativos y no forman parte de la solución.
+Cada vez que se trae información de un sistema fuente se registra una
+carga con: sistema de origen, tabla de destino, rango de fechas que cubre,
+fecha y hora de inicio y de fin, filas leídas, cargadas y rechazadas, y
+estado (en proceso, completada, fallida o revertida).
 
-## 10. Requerimientos de análisis
+Cada operación, ingreso y costo indica en qué carga llegó y conserva su
+código de origen, que no puede repetirse. Así:
+  - una carga ejecutada dos veces no duplica montos;
+  - un mes puede volver a cargarse si el sistema fuente lo corrige;
+  - se puede rastrear de dónde vino cada importe.
 
-Una vez implementada la base de datos, el fondo deberá poder responder preguntas como:
 
-¿Cuál es el ingreso total generado por cada asegurado? ¿Cuál es el costo total asociado a cada asegurado? ¿Cuál es el resultado financiero de cada asegurado? ¿Cuáles son los 10 asegurados de mayor costo? ¿Qué asegurados presentan resultado financiero negativo? ¿Qué coberturas generan mayores ingresos? ¿Qué coberturas generan mayor resultado financiero? ¿Qué segmento de asegurados es más sostenible? ¿Qué canal concentra mayor cantidad de operaciones? ¿Qué canal genera mejor resultado financiero? ¿Cómo evoluciona mensualmente el resultado financiero de un asegurado? ¿Qué asegurados generan altos ingresos pero también altos costos?
+13. RESULTADO FINANCIERO
+
+El resultado financiero es un indicador de sostenibilidad del fondo, no de
+utilidad comercial:
+
+    Resultado financiero = Ingresos - Costos
+
+El período de análisis es el mes. El resultado se analiza por:
+  - Asegurado.
+  - Cobertura.
+  - Segmento, según el segmento que tenía el asegurado en cada mes
+    (historial de condición).
+  - Entidad empleadora, según la entidad vigente en cada mes.
+  - Período.
+  - Canal, considerando solo los ingresos y costos vinculados a
+    operaciones de ese canal. Los aportes y los costos administrativos no
+    se originan en un canal y no se asignan a ninguno.
+
+Ejemplo (datos ilustrativos, no forman parte de la solución):
+
+  Asegurado     Mes       Ingresos   Costos    Resultado
+  Asegurado A   Enero     S/ 450     S/ 180    S/ 270
+  Asegurado A   Febrero   S/ 520     S/ 610    -S/ 90
+  Asegurado B   Enero     S/ 150     S/ 230    -S/ 80
+
+
+14. REQUERIMIENTOS DE ANÁLISIS
+
+Por asegurado
+   1. ¿Cuál es el ingreso total generado por cada asegurado?
+   2. ¿Cuál es el costo total asociado a cada asegurado?
+   3. ¿Cuál es el resultado financiero de cada asegurado?
+   4. ¿Cuáles son los 10 asegurados de mayor costo?
+   5. ¿Qué asegurados presentan resultado financiero negativo?
+   6. ¿Qué asegurados generan altos ingresos pero también altos costos?
+   7. ¿Cómo evoluciona mensualmente el resultado financiero de un
+      asegurado?
+
+Por cobertura y segmento
+   8. ¿Qué coberturas generan mayores ingresos?
+   9. ¿Qué coberturas generan mayor resultado financiero?
+  10. ¿Qué segmento de asegurados es más sostenible, considerando el
+      segmento que tenía cada asegurado en cada mes?
+  11. ¿Cómo cambia el resultado de un segmento cuando sus asegurados se
+      jubilan o quedan cesantes?
+
+Por canal
+  12. ¿Qué canal concentra mayor cantidad de operaciones?
+  13. ¿Qué canal tiene mayor costo total y mayor costo promedio por
+      operación?
+  14. ¿Qué canal genera mejor resultado financiero, según la definición de
+      la sección 13?
+
+Por entidad y fuentes de ingreso
+  15. ¿Qué entidades empleadoras aportan más al fondo?
+  16. ¿Qué parte de los ingresos proviene de aportes, del Tesoro y de
+      recuperaciones?
+  17. ¿Cuánto se recupera de terceros por las atenciones?
+
+Control de la información
+  18. ¿Qué cargas fallaron o tuvieron filas rechazadas, y en qué meses?
+
+
+==========================================================================
+LÓGICA DE LAS RELACIONES
+==========================================================================
+
+Todas las relaciones son de uno a muchos (1:N). La relación muchos a
+muchos entre asegurados y coberturas se resuelve con la tabla
+afiliaciones.
+
+Formato:  tabla padre -> tabla hija  (cardinalidad)
+          Pregunta que responde.
+
+  segmentos -> asegurados  (1:N)
+      ¿Qué tipo de asegurado es hoy?
+
+  entidades_empleadoras -> asegurados  (0..1:N)
+      ¿Quién es hoy su empleador?
+
+  asegurados -> asegurados_condicion_hist  (1:N)
+      ¿Qué condición tuvo en cada fecha?
+
+  segmentos -> asegurados_condicion_hist  (1:N)
+      ¿En qué segmento estaba en una fecha dada?
+
+  entidades_empleadoras -> asegurados_condicion_hist  (0..1:N)
+      ¿Quién era su empleador en una fecha dada?
+
+  categorias_cobertura -> coberturas  (1:N)
+      ¿Cuánto se gasta por categoría (básica, complementaria, especial)?
+
+  asegurados -> afiliaciones  (1:N)
+      ¿Qué planes tiene cada asegurado?
+
+  coberturas -> afiliaciones  (1:N)
+      ¿Quiénes están afiliados a cada plan?
+
+  afiliaciones -> operaciones  (1:N)
+      ¿Qué atenciones tuvo el asegurado y bajo qué plan?
+
+  canales -> operaciones  (1:N)
+      ¿Por qué vía se atiende la gente?
+
+  periodos -> operaciones  (1:N)
+      ¿Cuántas atenciones hubo por mes?
+
+  afiliaciones -> ingresos  (1:N)
+      ¿Cuánto aportó cada asegurado y para qué plan?
+
+  periodos -> ingresos  (1:N)
+      ¿Cuánto se recaudó por mes?
+
+  entidades_empleadoras -> ingresos  (0..1:N)
+      ¿Cuánto pagó cada empleador?
+
+  operaciones -> ingresos  (0..1:N)
+      ¿Cuánto se recuperó de terceros por cada atención?
+
+  afiliaciones -> costos  (1:N)
+      ¿Cuánto costó cada asegurado, incluidos los gastos administrativos?
+
+  operaciones -> costos  (0..1:N)
+      ¿Cuánto costó cada atención?
+
+  periodos -> costos  (1:N)
+      ¿Cuánto se gastó por mes?
+
+  cargas -> operaciones, ingresos y costos  (1:N)
+      ¿De qué sistema y en qué carga llegó cada fila?
+
+
+Caminos para responder cada análisis:
+
+  Resultado por asegurado
+      ingresos + costos -> afiliaciones -> asegurados
+  Resultado por segmento
+      ... -> asegurados -> asegurados_condicion_hist (por fecha) -> segmentos
+  Resultado por cobertura
+      ingresos + costos -> afiliaciones -> coberturas -> categorias_cobertura
+  Aportes por entidad
+      ingresos -> entidades_empleadoras
+  Costo por canal
+      costos -> operaciones -> canales
+  Recuperaciones
+      ingresos (subrogación) -> operaciones
+  Evolución mensual
+      ingresos / costos / operaciones -> periodos
+  Trazabilidad
+      ingresos / costos / operaciones -> cargas
+
+
+==========================================================================
+DECISIONES DE DISEÑO
+==========================================================================
+
+1. Los ingresos se relacionan con la afiliación, no con la operación.
+   El aporte se paga por estar afiliado, se atienda o no el asegurado.
+   Solo la recuperación por subrogación nace de una atención, y es el único
+   ingreso que puede apuntar a una operación (lo controla un CHECK).
+
+2. Ingresos, costos y operaciones no guardan id_asegurado ni id_cobertura.
+   Ambos datos se obtienen de la afiliación. Guardarlos también en esas
+   tablas permitiría que se contradijeran (tercera forma normal).
+
+3. Claves foráneas compuestas (id_operacion, id_afiliacion).
+   En ingresos y costos obligan a que la operación referenciada sea de la
+   misma afiliación. Así un costo o una recuperación no pueden quedar
+   asignados al asegurado equivocado.
+
+4. Los costos tienen afiliación obligatoria y operación opcional.
+   Todo costo pertenece a un asegurado, incluido el administrativo. Solo el
+   administrativo puede no tener operación (lo controla un CHECK).
+
+5. El historial de condición se cruza por fecha, sin clave foránea hacia
+   los movimientos.
+   La vista vw_resultado_financiero busca el tramo cuyo rango incluye la
+   fecha de cada movimiento. Así no se repite el segmento en miles de filas
+   y los reportes de meses pasados no cambian cuando el asegurado cambia de
+   condición. asegurados.id_segmento e id_entidad se mantienen para
+   consultar rápido la condición actual.
+
+6. Sin trigger en el historial.
+   Los tramos los carga el proceso de integración con las fechas del
+   sistema fuente. Un trigger usaría la fecha de carga, que no es la fecha
+   real del cambio.
+
+7. codigo_origen único e id_carga en cada movimiento.
+   Evitan duplicados al reprocesar y permiten rehacer un mes completo
+   cuando el sistema fuente corrige datos. Los importes se mantienen
+   mayores o iguales a cero: las correcciones se hacen recargando el mes.
+
+8. periodos es un calendario diario.
+   Las atenciones y liquidaciones ocurren en días concretos. Con el día
+   guardado se puede agrupar por mes, trimestre o semestre; al revés no
+   sería posible.
+
+9. Se eliminaron columnas redundantes.
+   asegurados.tipo_asegurado (lo da el segmento) y coberturas.tipo_cobertura
+   (lo da la categoría).
